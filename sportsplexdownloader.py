@@ -20,7 +20,7 @@ Log_Format = "%(levelname)s %(asctime)s - %(message)s"
 
 seasonyear = "2122"
 nbaseasonyear = "2021-22"
-nbaschedule = os.path.join(os.getcwd(), "nbaschedule.json")
+nbaschedule = os.path.join(os.getcwd(), "nbaschedule.json.json")
 configpath = os.path.join(os.getcwd(), "config.cfg")
 loggingpath = os.path.join(os.getcwd(), "logfile.log")
 pathtorrenttitle = os.path.join(os.getcwd(), "torrenttitle.cfg")
