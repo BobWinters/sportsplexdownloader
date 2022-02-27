@@ -14,13 +14,14 @@ from pytz import timezone
 import time
 import logging
 import os.path
+import lxml
 
 
 Log_Format = "%(levelname)s %(asctime)s - %(message)s"
 
 seasonyear = "2122"
 nbaseasonyear = "2021-22"
-nbaschedule = os.path.join(os.getcwd(), "nbaschedule.json.json")
+nbaschedule = os.path.join(os.getcwd(), "nbaschedule.json")
 configpath = os.path.join(os.getcwd(), "config.cfg")
 loggingpath = os.path.join(os.getcwd(), "logfile.log")
 pathtorrenttitle = os.path.join(os.getcwd(), "torrenttitle.cfg")
@@ -51,7 +52,7 @@ try:
     with open(pathcompletedtorrents, "r") as fp:
         completedtorrents = json.loads(fp.read())
 except Exception as inst:
-    logger.warning("No completed torrents " + inst)
+    logger.warning("No completed torrents " + str(inst))
     completedtorrents = []
 
 
@@ -59,7 +60,7 @@ try:
     with open(pathtorrenttitle, "r") as fp:
         torrenttitle = json.loads(fp.read())
 except Exception as inst:
-    logger.warning("No torrenttitle " + inst)
+    logger.warning("No torrenttitle " + str(inst))
     torrenttitle = []
 
 
@@ -73,9 +74,9 @@ def finddateinschedule(aawayteam, ahometeam, acurrentdate):
 
     for amonthcollection in nbaschedulejson["lscd"]:
         for agamecollection in amonthcollection["mscd"]["g"]:
-            if agamecollection["gdte"] in datelist and agamecollection["h"]["ta"] == aawayteam["keywords"][2] and agamecollection["v"]["ta"] == ahometeam["keywords"][2]:
+            if agamecollection["gdte"] in datelist and agamecollection["h"]["ta"] == aawayteam["keywords"][1] and agamecollection["v"]["ta"] == ahometeam["keywords"][1]:
                 return agamecollection["etm"]
-    logger.error("Can't find in schedule: Away team = " + aawayteam["keywords"][2] + "Home team = " + ahometeam["keywords"][2] + " Startdate: " +
+    logger.error("Can't find in schedule: Away team = " + aawayteam["keywords"][1] + "Home team = " + ahometeam["keywords"][1] + " Startdate: " +
                   startdateformatted + " Enddate: " + enddateformatted)
     return ""
 
@@ -112,7 +113,7 @@ def fixfilename(filename):
 
 
 def findteaminfilename(filename, isaway):
-    for myteam in configjson['Teams']:
+    for myteam in configjson['teams']:
         for myteamkeywords in myteam['keywords']:
             regteamtext = ""
             if isaway:
@@ -139,7 +140,8 @@ def finddateinfilename(filename):
 
 
 def checktorrents():
-    torrentlist = client.torrents_info(status_filter=None, category="NBA", sort=None, reverse=None, limit=None, offset=None,
+    torrentlist = client.torrents_info(status_filter=None, category=configjson["generalsettings"]["qbitorrentlabel"],
+                                       sort=None, reverse=None, limit=None, offset=None,
                                        torrent_hashes=None, tag=None)
     for atorrent in torrentlist:
         if atorrent.state == "uploading" or atorrent.state == "stalledUP" or atorrent.state == "pausedUP":
@@ -156,13 +158,13 @@ def checktorrents():
                     try:
                         shutil.copy(atorrent.save_path + "/" + afile.name, "/mnt/local/Media/Sports/NBA/Season " + seasonyear + "/" + newfilename + ext)
                     except Exception as insti:
-                        logger.error("Fatal error copying file:" + "Copying: Source = " + atorrent.save_path + afile.name + " Destination = " + configpath["generalsettings"]["finalpath"] + "Season " + seasonyear + "/" + newfilename + ext + " " + insti)
+                        logger.error("Fatal error copying file:" + "Copying: Source = " + atorrent.save_path + afile.name + " Destination = " + configjson["generalsettings"]["finalpath"] + "Season " + seasonyear + "/" + newfilename + ext + " " + insti)
                         quit()
                     try:
                         plex_autoscanheaders = {'Content-Type': 'application/x-www-form-urlencoded'}
-                        requests.post(configpath["generalsettings"]["plexautoscanurl"], data="eventType=Manual&filepath=" + configpath["generalsettings"]["finalpath"] + "Season " + seasonyear + "/", headers=plex_autoscanheaders)
+                        requests.post(configjson["generalsettings"]["plexautoscanurl"], data="eventType=Manual&filepath=" + configjson["generalsettings"]["finalpath"] + "Season " + seasonyear + "/", headers=plex_autoscanheaders)
                     except Exception as insti:
-                        logger.error("Error connecting to Plex_Autoscan file:" + configpath["generalsettings"]["plexautoscanurl"] + "eventType=Manual&filepath=" + configpath["generalsettings"]["finalpath"] + "Season " + seasonyear + "/")
+                        logger.error("Error connecting to Plex_Autoscan file:" + configjson["generalsettings"]["plexautoscanurl"] + "eventType=Manual&filepath=" + configjson["generalsettings"]["finalpath"] + "Season " + seasonyear + "/")
 
                 logger.info("Adding hash to completedtorrents: " + atorrent.hash)
                 completedtorrents.append(atorrent.hash)
@@ -178,7 +180,7 @@ def checktorrents():
 
 
 def checkrss():
-    page_link = configpath["generalsettings"]["jacketturl"]
+    page_link = configjson["generalsettings"]["jacketturl"]
     try:
         logger.info("Getting jackett webpage")
         page_response = requests.get(page_link, timeout=10)
@@ -189,7 +191,7 @@ def checkrss():
     foundnew = False
     for torrentItem in page_content.findAll('item'):
         atitle = torrentItem.find('title').text
-        for teamtoget in configpath["teams"]:
+        for teamtoget in configjson["teams"]:
             if teamtoget["download"] and teamtoget["teamname"].casefold() in atitle.casefold():
                 alink = torrentItem.find('link').text
                 if atitle not in torrenttitle:
@@ -197,10 +199,10 @@ def checkrss():
                     foundnew = True
                     client.torrents_add(
                         urls=alink
-                        , torrent_files=None, save_path=None, cookie=None, category=configpath["generalsettings"]["qbitorrentlabel"], is_skip_checking=None,
+                        , torrent_files=None, save_path=None, cookie=None, category=configjson["generalsettings"]["qbitorrentlabel"], is_skip_checking=None,
                         is_paused=None, is_root_folder=None, rename=None, upload_limit=None, download_limit=None,
                         use_auto_torrent_management=None, is_sequential_download=None, is_first_last_piece_priority=None,
-                        tags=None, content_layout=None, ratio_limit=None, seeding_time_limit=configpath["generalsettings"]["seeding_time_limit"], download_path=None,
+                        tags=None, content_layout=None, ratio_limit=None, seeding_time_limit=configjson["generalsettings"]["seeding_time_limit"], download_path=None,
                         use_download_path=None)
                 logger.info("Already have: " + atitle)
     if foundnew is True:
@@ -208,13 +210,13 @@ def checkrss():
             json.dump(torrenttitle, outputfile)
 
 
-schedule.every(configpath["generalsettings"]["checktorrentinterval"]).seconds.do(checktorrents)
-schedule.every(configpath["generalsettings"]["checkrssinterval"]).seconds.do(checkrss)
+schedule.every(configjson["generalsettings"]["checktorrentinterval"]).seconds.do(checktorrents)
+schedule.every(configjson["generalsettings"]["checkrssinterval"]).seconds.do(checkrss)
 
 
-client = Client(host=configpath["generalsettings"]["qbitorrenturl"],
-                username=configpath["generalsettings"]["qbitorrentusername"],
-                password=configpath["generalsettings"]["qbitorrentpassword"])
+client = Client(host=configjson["generalsettings"]["qbitorrenturl"],
+                username=configjson["generalsettings"]["qbitorrentusername"],
+                password=configjson["generalsettings"]["qbitorrentpassword"])
 
 
 checktorrents()
